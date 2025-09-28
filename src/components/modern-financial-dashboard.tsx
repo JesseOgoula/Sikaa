@@ -516,10 +516,7 @@ export function ModernFinancialDashboard() {
               <CardContent className="p-0">
                 <div className="relative overflow-hidden rounded-2xl" style={{ background: 'linear-gradient(120deg, #fff7ed 60%, #fbbf24 120%)' }}>
                   <div className="flex items-center justify-between px-6 pt-6 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-orange-100 animate-spin-slow">
-                        <Settings className="w-6 h-6 text-orange-400" />
-                      </span>
+                    <div>
                       <h3 className="text-lg font-bold text-orange-700 drop-shadow-sm">Plafond de dépenses mensuel</h3>
                     </div>
                     <button
