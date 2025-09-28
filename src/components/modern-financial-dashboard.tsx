@@ -5,7 +5,7 @@ import { MyCards } from "@/components/my-cards";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, ArrowUpRight, ArrowDownLeft, Bell, User, LogOut } from "lucide-react";
+import { Search, Filter, ArrowUpRight, ArrowDownLeft, Bell, User, LogOut, Settings } from "lucide-react";
 import { ValidatePotentialIncomeButton } from "@/components/ui/ValidatePotentialIncomeButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -118,6 +118,58 @@ export function ModernFinancialDashboard() {
   // ...existing code...
   // ...existing code...
   // (après l'initialisation de transactions et avant le return)
+  // Plafond de dépenses mensuel dynamique (avec sauvegarde Supabase)
+  const [spendingLimit, setSpendingLimit] = useState<number | null>(null);
+  const [showLimitEdit, setShowLimitEdit] = useState(false);
+  const [limitInput, setLimitInput] = useState("");
+  const [limitLoading, setLimitLoading] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Charger le plafond depuis Supabase au montage
+  useEffect(() => {
+    const fetchLimit = async () => {
+      setLimitLoading(true);
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (!user || userError) {
+        setUserId(null);
+        setLimitLoading(false);
+        return;
+      }
+      setUserId(user.id);
+      // On suppose une table 'user_settings' avec user_id, spending_limit
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('spending_limit')
+        .eq('user_id', user.id)
+        .single();
+      if (!error && data && data.spending_limit) {
+        setSpendingLimit(Number(data.spending_limit));
+      } else {
+        setSpendingLimit(null);
+      }
+      setLimitLoading(false);
+    };
+    fetchLimit();
+  }, []);
+
+  // Sauvegarder le plafond dans Supabase
+  const handleSaveLimit = async () => {
+    const value = Number(limitInput);
+    if (!isNaN(value) && value > 0 && userId) {
+      setLimitLoading(true);
+      // Upsert dans user_settings
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({ user_id: userId, spending_limit: value }, { onConflict: 'user_id' });
+      if (!error) {
+        setSpendingLimit(value);
+        setShowLimitEdit(false);
+      } else {
+        alert("Erreur lors de la sauvegarde du plafond côté serveur");
+      }
+      setLimitLoading(false);
+    }
+  };
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const defaultCategories = [
@@ -461,20 +513,90 @@ export function ModernFinancialDashboard() {
 
             {/* Monthly Spending Limit */}
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-4">Plafond de dépenses mensuel</h3>
-                <div className="space-y-4">
-                  <div className="w-full bg-gray-200 rounded-full h-3">
-                    <div className="bg-orange-500 h-3 rounded-full" style={{ width: '25%' }}></div>
+              <CardContent className="p-0">
+                <div className="relative overflow-hidden rounded-2xl" style={{ background: 'linear-gradient(120deg, #fff7ed 60%, #fbbf24 120%)' }}>
+                  <div className="flex items-center justify-between px-6 pt-6 pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-orange-100 animate-spin-slow">
+                        <Settings className="w-6 h-6 text-orange-400" />
+                      </span>
+                      <h3 className="text-lg font-bold text-orange-700 drop-shadow-sm">Plafond de dépenses mensuel</h3>
+                    </div>
+                    <button
+                      className="p-2 rounded-full hover:bg-orange-200/60 transition disabled:opacity-50"
+                      title="Paramétrer le plafond"
+                      onClick={() => { setShowLimitEdit(true); setLimitInput(spendingLimit ? spendingLimit.toString() : ""); }}
+                      disabled={limitLoading}
+                    >
+                      <Settings className="w-5 h-5 text-orange-400" />
+                    </button>
                   </div>
-                  <div className="flex justify-between">
-                    <div>
-                      <p className="text-2xl font-bold text-orange-500">1400 FCFA</p>
-                      <p className="text-sm text-muted-foreground">dépensé sur</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold">5500 FCFA</p>
-                    </div>
+                  <div className="px-6 pb-6">
+                    {limitLoading ? (
+                      <div className="py-8 text-center text-muted-foreground">Chargement...</div>
+                    ) : showLimitEdit ? (
+                      <div className="flex flex-col gap-3 bg-white/80 rounded-xl p-4 mt-2 shadow">
+                        <label className="text-sm text-muted-foreground font-semibold">Définir le plafond mensuel (FCFA)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          className="rounded border p-2 focus:ring-2 focus:ring-orange-400"
+                          value={limitInput}
+                          onChange={e => setLimitInput(e.target.value)}
+                          placeholder="Ex: 5000"
+                          disabled={limitLoading}
+                        />
+                        <div className="flex gap-2 justify-end">
+                          <Button variant="outline" type="button" onClick={() => setShowLimitEdit(false)} disabled={limitLoading}>Annuler</Button>
+                          <Button className="bg-orange-500 text-white" type="button" onClick={handleSaveLimit} disabled={limitLoading}>Enregistrer</Button>
+                        </div>
+                      </div>
+                    ) : spendingLimit ? (
+                      <div className="space-y-4">
+                        {/* Barre de progression circulaire + badge */}
+                        <div className="flex items-center gap-4 mt-2">
+                          <div className="relative w-16 h-16">
+                            <svg className="absolute top-0 left-0" width="64" height="64">
+                              <circle cx="32" cy="32" r="28" fill="#fff7ed" />
+                              <circle
+                                cx="32" cy="32" r="28"
+                                fill="none"
+                                stroke="#fb923c"
+                                strokeWidth="6"
+                                strokeDasharray={2 * Math.PI * 28}
+                                strokeDashoffset={2 * Math.PI * 28 * (1 - Math.min(1, spendingThisMonth / spendingLimit))}
+                                strokeLinecap="round"
+                                style={{ transition: 'stroke-dashoffset 0.7s cubic-bezier(.4,2,.6,1)' }}
+                              />
+                            </svg>
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <span className="text-lg font-bold text-orange-600">{Math.min(100, Math.round((spendingThisMonth / spendingLimit) * 100))}%</span>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-2xl font-bold text-orange-600">{spendingThisMonth.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</span>
+                              <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${spendingThisMonth > spendingLimit ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
+                                {spendingThisMonth > spendingLimit ? 'Dépassé' : 'OK'}
+                              </span>
+                            </div>
+                            <p className="text-sm text-muted-foreground">dépensé sur <span className="font-semibold text-orange-700">{spendingLimit.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</span></p>
+                          </div>
+                        </div>
+                        {/* Barre horizontale fine pour accessibilité */}
+                        <div className="w-full bg-orange-100 rounded-full h-2 mt-2">
+                          <div
+                            className="bg-orange-500 h-2 rounded-full transition-all"
+                            style={{ width: `${Math.min(100, Math.round((spendingThisMonth / spendingLimit) * 100))}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <span className="text-orange-300 text-4xl mb-2 animate-pulse"><Settings className="inline w-8 h-8" /></span>
+                        <p className="text-center text-muted-foreground font-medium">Vous n'avez pas encore défini de plafond de dépenses mensuelles.<br/>Cliquez sur <span className='inline-block align-middle'><Settings className='inline w-4 h-4' /></span> pour le paramétrer.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </CardContent>
