@@ -14,7 +14,7 @@ type Transaction = {
   id: string;
   activity: string;
   amount: number;
-  type: "income" | "expense";
+  type: "income" | "expense" | "potential_income";
   status: "completed" | "pending" | "in-progress";
   date: string;
   icon: string;
@@ -76,6 +76,9 @@ const initialTransactions: Transaction[] = [
 ];
 
 export function ModernFinancialDashboard() {
+  // ...existing code...
+  // ...existing code...
+  // (après l'initialisation de transactions et avant le return)
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
   const defaultCategories = [
@@ -149,12 +152,41 @@ export function ModernFinancialDashboard() {
   }, []);
   const navigate = useNavigate();
 
-  // Solde total = somme de toutes les entrées (income)
-  const totalIncome = transactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
+  // Solde total historique (tous les revenus réels, hors revenus potentiels)
+  const totalIncomeAllTime = transactions
+    .filter(t => t.type === "income")
+    .reduce((sum, t) => sum + t.amount, 0);
+
+
+  // Helpers pour dates
+  const now = new Date();
+  const currentMonth = now.getMonth();
+  const currentYear = now.getFullYear();
+  const prevMonth = currentMonth === 0 ? 11 : currentMonth - 1;
+  const prevMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear;
+
+  // Total Earnings (revenus du mois en cours)
+  const earningsThisMonth = transactions.filter(t => t.type === "income" && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+  // Total Earnings mois précédent
+  const earningsPrevMonth = transactions.filter(t => t.type === "income" && new Date(t.date).getMonth() === prevMonth && new Date(t.date).getFullYear() === prevMonthYear).reduce((sum, t) => sum + t.amount, 0);
+  // % évolution revenus
+  const earningsPercent = earningsPrevMonth === 0 ? 0 : ((earningsThisMonth - earningsPrevMonth) / earningsPrevMonth) * 100;
+
+  // Total Spending (dépenses du mois en cours)
+  const spendingThisMonth = transactions.filter(t => t.type === "expense" && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
+  // Total Spending mois précédent
+  const spendingPrevMonth = transactions.filter(t => t.type === "expense" && new Date(t.date).getMonth() === prevMonth && new Date(t.date).getFullYear() === prevMonthYear).reduce((sum, t) => sum + t.amount, 0);
+  // % évolution dépenses
+  const spendingPercent = spendingPrevMonth === 0 ? 0 : ((spendingThisMonth - spendingPrevMonth) / spendingPrevMonth) * 100;
+
+  // Total Income (solde disponible = revenus - dépenses du mois en cours)
+  const availableBalance = earningsThisMonth - spendingThisMonth;
+
+  // Total Revenue (revenus potentiels du mois en cours)
+  const potentialRevenue = transactions.filter(t => t.type === "potential_income" && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
 
   // Génère les données du graphique dynamiquement à partir des transactions (6 derniers mois)
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const now = new Date();
   const chartData = Array.from({ length: 6 }).map((_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
     const monthLabel = `${months[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
@@ -220,10 +252,11 @@ export function ModernFinancialDashboard() {
       activity: form.activity,
       amount: Number(form.amount),
       transaction_type: form.type,
-      status: "completed",
+      status: form.type === "potential_income" ? "pending" : "completed",
       category: form.category,
       // transaction_date et created_at sont gérés par défaut SQL
     };
+    console.log("Payload envoyé à Supabase:", newTx);
     // Insérer dans Supabase
     const { data, error } = await supabase
       .from('transactions')
@@ -236,10 +269,10 @@ export function ModernFinancialDashboard() {
           id: inserted.id,
           activity: inserted.activity,
           amount: Number(inserted.amount),
-          type: inserted.transaction_type === 'income' ? 'income' : 'expense',
+          type: inserted.transaction_type === 'income' ? 'income' : (inserted.transaction_type === 'potential_income' ? 'potential_income' : 'expense'),
           status: inserted.status === 'completed' || inserted.status === 'pending' || inserted.status === 'in-progress' ? inserted.status : 'completed',
           date: inserted.transaction_date || new Date().toISOString(),
-          icon: inserted.transaction_type === "income" ? "shopping" : "travel",
+          icon: inserted.transaction_type === "income" ? "shopping" : (inserted.transaction_type === "potential_income" ? "💡" : "travel"),
           category: inserted.category,
         },
         ...transactions,
@@ -247,6 +280,7 @@ export function ModernFinancialDashboard() {
       setShowAddForm(false);
       setForm({ activity: "", amount: "", type: "income", category: categories[0] });
     } else {
+      console.error("Erreur Supabase lors de l'insertion:", error);
       alert("Erreur lors de l'ajout de la transaction");
     }
   };
@@ -294,7 +328,7 @@ export function ModernFinancialDashboard() {
                     <div className="flex items-center gap-1 text-xs text-muted-foreground">🇫🇷 FCFA</div>
                   </div>
                   <div>
-                    <h2 className="text-4xl font-bold text-foreground">{totalIncome.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</h2>
+                    <h2 className="text-4xl font-bold text-foreground">{totalIncomeAllTime.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</h2>
                   </div>
                   <div className="flex gap-3 pt-4">
                     <Button className="bg-orange-500 hover:bg-orange-600 text-white flex-1 rounded-xl" onClick={handleAddTransaction}>
@@ -309,6 +343,7 @@ export function ModernFinancialDashboard() {
                       <select name="type" value={form.type} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white">
                         <option value="income">Revenu</option>
                         <option value="expense">Dépense</option>
+                        <option value="potential_income">Revenu potentiel</option>
                       </select>
                       <div className="relative">
                         <select name="category" value={form.category} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white appearance-none pr-10">
@@ -406,54 +441,56 @@ export function ModernFinancialDashboard() {
           <div className="col-span-5 space-y-6">
             {/* Top Row - Earnings and Spending */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Total Earnings */}
               <Card className="bg-orange-500 text-white border-0 shadow-lg rounded-2xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-white/80">Total Earnings</span>
+                    <span className="text-white/80">Revenus du mois</span>
                     <ArrowUpRight className="h-5 w-5" />
                   </div>
-                  <div className="text-3xl font-bold mb-1">950 FCFA</div>
-                  <div className="text-white/80 text-sm">+7% Ce mois</div>
+                  <div className="text-3xl font-bold mb-1">{earningsThisMonth.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</div>
+                  <div className="text-white/80 text-sm">{earningsPercent >= 0 ? '+' : ''}{earningsPercent.toFixed(0)}% Ce mois</div>
                 </CardContent>
               </Card>
-              
+              {/* Total Spending */}
               <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-muted-foreground">Total Spending</span>
+                    <span className="text-muted-foreground">Dépenses du mois</span>
                     <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
                       <ArrowDownLeft className="h-4 w-4" />
                     </div>
                   </div>
-                  <div className="text-3xl font-bold mb-1">1646 FCFA</div>
-                  <div className="text-red-500 text-sm">-5% Ce mois</div>
+                  <div className="text-3xl font-bold mb-1">{spendingThisMonth.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</div>
+                  <div className="text-red-500 text-sm">{spendingPercent >= 0 ? '+' : ''}{spendingPercent.toFixed(0)}% Ce mois</div>
                 </CardContent>
               </Card>
             </div>
 
             {/* Second Row - Income and Revenue */}
             <div className="grid grid-cols-2 gap-4">
+              {/* Total Income (solde disponible) */}
               <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-muted-foreground">Total Income</span>
+                    <span className="text-muted-foreground">Solde disponible</span>
                     <ArrowUpRight className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <div className="text-3xl font-bold mb-1">950 FCFA</div>
-                  <div className="text-green-500 text-sm">+8% Ce mois</div>
+                  <div className="text-3xl font-bold mb-1">{availableBalance.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</div>
+                  <div className="text-green-500 text-sm">Montant restant après dépenses</div>
                 </CardContent>
               </Card>
-              
+              {/* Total Revenue (revenus potentiels) */}
               <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-muted-foreground">Total Revenue</span>
+                    <span className="text-muted-foreground">Revenus potentiels</span>
                     <div className="w-6 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center">
                       $
                     </div>
                   </div>
-                  <div className="text-3xl font-bold mb-1">808 FCFA</div>
-                  <div className="text-green-500 text-sm">+4% Ce mois</div>
+                  <div className="text-3xl font-bold mb-1">{potentialRevenue.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</div>
+                  <div className="text-green-500 text-sm">Total des revenus attendus</div>
                 </CardContent>
               </Card>
             </div>
