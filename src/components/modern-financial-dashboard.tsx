@@ -8,68 +8,247 @@ import { Input } from "@/components/ui/input";
 import { Search, Filter, ArrowUpRight, ArrowDownLeft, Bell, User, LogOut } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
 
-const transactions = [
+type Transaction = {
+  id: string;
+  activity: string;
+  amount: number;
+  type: "income" | "expense";
+  status: "completed" | "pending" | "in-progress";
+  date: string;
+  icon: string;
+  category: string;
+};
+
+
+const initialTransactions: Transaction[] = [
   {
     id: "FAC_000076",
     activity: "Achat d'application mobile",
-    price: "25 500 FCFA",
-    status: "completed" as const,
-    date: "17 Avr, 2026 15:45",
-    icon: "mobile" as const,
+    amount: 25500,
+    type: "expense",
+    status: "completed",
+    date: "2026-04-17T15:45",
+    icon: "mobile",
+    category: "Autre",
   },
   {
     id: "FAC_000075",
     activity: "Réservation d'hôtel",
-    price: "32 750 FCFA",
-    status: "pending" as const,
-    date: "15 Avr, 2026 11:30",
-    icon: "hotel" as const,
+    amount: 32750,
+    type: "expense",
+    status: "pending",
+    date: "2026-04-15T11:30",
+    icon: "hotel",
+    category: "Transport",
   },
   {
     id: "FAC_000074",
     activity: "Billet d'avion",
-    price: "40 200 FCFA",
-    status: "completed" as const,
-    date: "15 Avr, 2026 12:00",
-    icon: "travel" as const,
+    amount: 40200,
+    type: "expense",
+    status: "completed",
+    date: "2026-04-15T12:00",
+    icon: "travel",
+    category: "Transport",
   },
   {
     id: "FAC_000073",
     activity: "Achat d'épicerie",
-    price: "50 200 FCFA",
-    status: "in-progress" as const,
-    date: "14 Avr, 2026 21:15",
-    icon: "shopping" as const,
+    amount: 50200,
+    type: "expense",
+    status: "in-progress",
+    date: "2026-04-14T21:15",
+    icon: "shopping",
+    category: "Alimentation",
   },
   {
     id: "FAC_000072",
     activity: "Licence logicielle",
-    price: "15 900 FCFA",
-    status: "completed" as const,
-    date: "10 Avr, 2026 06:00",
-    icon: "software" as const,
+    amount: 15900,
+    type: "expense",
+    status: "completed",
+    date: "2026-04-10T06:00",
+    icon: "software",
+    category: "Autre",
   },
 ];
 
-const chartData = [
-  { month: "Jan", profit: 35, loss: 25 },
-  { month: "Feb", profit: 38, loss: 18 },
-  { month: "Mar", profit: 32, loss: 22 },
-  { month: "Apr", profit: 40, loss: 20 },
-  { month: "May", profit: 42, loss: 28 },
-  { month: "Jun", profit: 45, loss: 30 },
-  { month: "Jul", profit: 38, loss: 25 },
-  { month: "Aug", profit: 35, loss: 20 },
-];
-
 export function ModernFinancialDashboard() {
-  const maxValue = Math.max(...chartData.flatMap(d => [d.profit, d.loss]));
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const defaultCategories = [
+    "Salaire",
+    "Alimentation",
+    "Transport",
+    "Divertissement",
+    "Santé",
+    "Logement",
+    "Autre"
+  ];
+  const [categories, setCategories] = useState<string[]>([]);
+  const [newCategory, setNewCategory] = useState("");
+  const [form, setForm] = useState({
+    activity: "",
+    amount: "",
+    type: "income",
+    category: defaultCategories[0],
+  });
+  // Charger les catégories et transactions depuis Supabase au montage
+  useEffect(() => {
+    // Charger les catégories
+    const fetchCategories = async () => {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('name')
+        .order('name', { ascending: true });
+      if (error) {
+        setCategories(defaultCategories);
+      } else if (data && data.length > 0) {
+        setCategories(data.map((c: { name: string }) => c.name));
+      } else {
+        setCategories(defaultCategories);
+      }
+    };
+    fetchCategories();
+
+    // Charger les transactions de l'utilisateur connecté
+    const fetchTransactions = async () => {
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (!user || userError) {
+        setTransactions([]);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('transaction_date', { ascending: false });
+      if (!error && data) {
+        setTransactions(
+          data.map((tx: any) => ({
+            id: tx.id,
+            activity: tx.activity,
+            amount: Number(tx.amount),
+            type: tx.transaction_type === 'income' ? 'income' : 'expense',
+            status: tx.status === 'completed' || tx.status === 'pending' || tx.status === 'in-progress' ? tx.status : 'completed',
+            date: tx.transaction_date || tx.created_at || new Date().toISOString(),
+            icon: tx.transaction_type === 'income' ? 'shopping' : 'travel',
+            category: tx.category,
+          }))
+        );
+      } else {
+        setTransactions([]);
+      }
+    };
+    fetchTransactions();
+  }, []);
   const navigate = useNavigate();
+
+  // Solde total = somme de toutes les entrées (income)
+  const totalIncome = transactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
+
+  // Génère les données du graphique dynamiquement à partir des transactions (6 derniers mois)
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const now = new Date();
+  const chartData = Array.from({ length: 6 }).map((_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
+    const monthLabel = `${months[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
+    const profit = transactions.filter(t => t.type === "income" && new Date(t.date).getMonth() === d.getMonth() && new Date(t.date).getFullYear() === d.getFullYear()).reduce((sum, t) => sum + t.amount, 0);
+    const loss = transactions.filter(t => t.type === "expense" && new Date(t.date).getMonth() === d.getMonth() && new Date(t.date).getFullYear() === d.getFullYear()).reduce((sum, t) => sum + t.amount, 0);
+    return { month: monthLabel, profit, loss };
+  });
+  const maxValue = Math.max(...chartData.flatMap(d => [d.profit, d.loss, 1]));
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/auth");
+  };
+
+  const handleAddTransaction = () => setShowAddForm(true);
+  const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+  const handleNewCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewCategory(e.target.value);
+  };
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newCategory && !categories.includes(newCategory)) {
+      // Récupérer l'utilisateur connecté
+      const {
+        data: { user },
+        error: userError
+      } = await supabase.auth.getUser();
+      if (!user || userError) {
+        alert("Utilisateur non connecté. Veuillez vous reconnecter.");
+        return;
+      }
+      // Ajout en base avec user_id
+      const { error } = await supabase.from('categories').insert({ name: newCategory, user_id: user.id });
+      if (!error) {
+        // Ajoute la nouvelle catégorie à la suite des catégories par défaut
+        setCategories([...defaultCategories, ...categories.filter(cat => !defaultCategories.includes(cat)), newCategory]);
+        setForm({ ...form, category: newCategory });
+        setNewCategory("");
+      } else {
+        alert("Erreur lors de l'ajout de la catégorie");
+      }
+    }
+  };
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Récupérer l'utilisateur connecté
+    const {
+      data: { user },
+      error: userError
+    } = await supabase.auth.getUser();
+    if (!user || userError) {
+      alert("Utilisateur non connecté. Veuillez vous reconnecter.");
+      return;
+    }
+    // Générer un order_id unique (ex: timestamp + random)
+    const order_id = `ORD_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    // Préparer la transaction à insérer
+    const newTx = {
+      user_id: user.id,
+      order_id,
+      activity: form.activity,
+      amount: Number(form.amount),
+      transaction_type: form.type,
+      status: "completed",
+      category: form.category,
+      // transaction_date et created_at sont gérés par défaut SQL
+    };
+    // Insérer dans Supabase
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert([newTx])
+      .select();
+    if (!error && data && data.length > 0) {
+      const inserted = data[0];
+      setTransactions([
+        {
+          id: inserted.id,
+          activity: inserted.activity,
+          amount: Number(inserted.amount),
+          type: inserted.transaction_type === 'income' ? 'income' : 'expense',
+          status: inserted.status === 'completed' || inserted.status === 'pending' || inserted.status === 'in-progress' ? inserted.status : 'completed',
+          date: inserted.transaction_date || new Date().toISOString(),
+          icon: inserted.transaction_type === "income" ? "shopping" : "travel",
+          category: inserted.category,
+        },
+        ...transactions,
+      ]);
+      setShowAddForm(false);
+      setForm({ activity: "", amount: "", type: "income", category: categories[0] });
+    } else {
+      alert("Erreur lors de l'ajout de la transaction");
+    }
   };
 
   return (
@@ -112,28 +291,43 @@ export function ModernFinancialDashboard() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-medium text-muted-foreground">Solde total</h3>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                      🇫🇷 FCFA
-                    </div>
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">🇫🇷 FCFA</div>
                   </div>
                   <div>
-                    <h2 className="text-4xl font-bold text-foreground">56023 FCFA</h2>
-                    <div className="flex items-center gap-1 mt-2">
-                      <ArrowUpRight className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-medium text-green-500">4,3%</span>
-                      <span className="text-sm text-muted-foreground">par rapport au mois dernier</span>
-                    </div>
+                    <h2 className="text-4xl font-bold text-foreground">{totalIncome.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</h2>
                   </div>
                   <div className="flex gap-3 pt-4">
-                    <Button className="bg-orange-500 hover:bg-orange-600 text-white flex-1 rounded-xl">
+                    <Button className="bg-orange-500 hover:bg-orange-600 text-white flex-1 rounded-xl" onClick={handleAddTransaction}>
                       <ArrowUpRight className="h-4 w-4 mr-2" />
-                      Transférer
-                    </Button>
-                    <Button variant="outline" className="flex-1 rounded-xl">
-                      <ArrowDownLeft className="h-4 w-4 mr-2" />
-                      Demander
+                      Ajouter
                     </Button>
                   </div>
+                  {showAddForm && (
+                    <form className="mt-4 space-y-3 bg-gray-50 p-4 rounded-xl border" onSubmit={handleFormSubmit}>
+                      <input name="activity" value={form.activity} onChange={handleFormChange} placeholder="Description" className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400" required />
+                      <input name="amount" value={form.amount} onChange={handleFormChange} placeholder="Montant" type="number" min="0" className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400" required />
+                      <select name="type" value={form.type} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white">
+                        <option value="income">Revenu</option>
+                        <option value="expense">Dépense</option>
+                      </select>
+                      <div className="relative">
+                        <select name="category" value={form.category} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white appearance-none pr-10">
+                          {categories.map((cat, idx) => (
+                            <option key={cat + idx} value={cat}>{cat}</option>
+                          ))}
+                        </select>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</span>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <input type="text" value={newCategory} onChange={handleNewCategoryChange} placeholder="Nouvelle catégorie" className="flex-1 rounded p-2 border focus:ring-2 focus:ring-orange-400" />
+                        <Button type="button" className="bg-orange-100 text-orange-600 hover:bg-orange-200 px-3 py-1 rounded" onClick={handleAddCategory}>Ajouter</Button>
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>Annuler</Button>
+                        <Button type="submit" className="bg-orange-500 text-white">Ajouter</Button>
+                      </div>
+                    </form>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -285,18 +479,18 @@ export function ModernFinancialDashboard() {
                 </div>
                 <div className="space-y-2">
                   {transactions.map((transaction, index) => (
-                    <div key={`${transaction.id}-${index}`} className="flex items-center justify-between py-3 border-b border-border last:border-0">
+                    <div key={transaction.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
-                          <span className="text-orange-600 dark:text-orange-400">📱</span>
+                          <span className="text-orange-600 dark:text-orange-400">{transaction.icon === 'shopping' ? '🛒' : transaction.icon === 'travel' ? '✈️' : transaction.icon === 'mobile' ? '📱' : transaction.icon === 'hotel' ? '🏨' : transaction.icon === 'software' ? '💻' : '💰'}</span>
                         </div>
                         <div>
                           <p className="font-medium">{transaction.activity}</p>
-                          <p className="text-sm text-muted-foreground">{transaction.date}</p>
+                          <p className="text-sm text-muted-foreground">{new Date(transaction.date).toLocaleString()}</p>
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold">{transaction.price}</p>
+                        <p className="font-semibold">{Number(transaction.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</p>
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                           transaction.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                           transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
