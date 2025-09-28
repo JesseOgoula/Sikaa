@@ -10,18 +10,20 @@ import { ValidatePotentialIncomeButton } from "@/components/ui/ValidatePotential
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import React, { useState, useEffect } from "react";
-import { Bar } from 'react-chartjs-2';
+import { Bar, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
   BarElement,
+  PointElement,
+  LineElement,
   Title,
   Tooltip,
   Legend,
 } from 'chart.js';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
+ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend);
 
 type Transaction = {
   id: string;
@@ -465,48 +467,108 @@ export function ModernFinancialDashboard() {
 
             {/* Wallets */}
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-sm font-medium text-muted-foreground">Portefeuilles</h3>
-                  <span className="text-sm text-muted-foreground">Total 3 portefeuilles</span>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                        🇫🇷
-                      </div>
-                      <span className="font-medium">FCFA</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">22 678 FCFA</p>
-                      <p className="text-xs text-green-500">Actif</p>
-                    </div>
+              <CardContent className="p-0">
+                <div className="rounded-2xl shadow-xl p-7 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 flex flex-col items-center">
+                  <div className="flex items-center justify-between w-full mb-6">
+                    <h3 className="text-lg font-bold text-orange-700 tracking-tight">Note de santé financière</h3>
+                    <span className="text-xs text-muted-foreground font-medium">Sur 10</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                        🇪🇺
+                  {(() => {
+                    const totalIncome = transactions.filter(t => t.type === "income").reduce((sum, t) => sum + t.amount, 0);
+                    const totalSpending = transactions.filter(t => t.type === "expense").reduce((sum, t) => sum + t.amount, 0);
+                    const totalPotential = transactions.filter(t => t.type === "potential_income").reduce((sum, t) => sum + t.amount, 0);
+                    const available = totalIncome - totalSpending;
+                    const ratio = totalIncome > 0 ? totalSpending / totalIncome : 1;
+                    let score = 10;
+                    let comments: string[] = [];
+                    if (totalIncome === 0) {
+                      score = 2;
+                      comments.push("Aucun revenu enregistré. Ajoutez vos revenus pour une meilleure analyse.");
+                    } else {
+                      if (ratio < 0.5) {
+                        score -= 0;
+                        comments.push("Excellent contrôle des dépenses.");
+                      } else if (ratio < 0.7) {
+                        score -= 1;
+                        comments.push("Bonne gestion, continuez ainsi.");
+                      } else if (ratio < 0.9) {
+                        score -= 2;
+                        comments.push("Attention à la hausse des dépenses.");
+                      } else {
+                        score -= 4;
+                        comments.push("Dépenses trop élevées par rapport aux revenus.");
+                      }
+                      if (available < 0) {
+                        score -= 2;
+                        comments.push("Solde négatif : vous dépensez plus que vos revenus.");
+                      } else if (available < totalIncome * 0.1) {
+                        score -= 1;
+                        comments.push("Solde faible, attention à vos réserves.");
+                      } else {
+                        comments.push("Solde sain, continuez à épargner.");
+                      }
+                      if (totalPotential > totalIncome * 0.3) {
+                        score -= 1;
+                        comments.push("Beaucoup de revenus potentiels non validés.");
+                      }
+                      if (spendingLimit && spendingThisMonth > spendingLimit) {
+                        score -= 1;
+                        comments.push("Vous avez dépassé votre plafond de dépenses mensuel.");
+                      }
+                    }
+                    if (score < 1) score = 1;
+                    if (score > 10) score = 10;
+                    // Couleur dynamique
+                    let accent = score >= 8 ? '#16a34a' : score >= 6 ? '#eab308' : '#dc2626';
+                    // Ticks style
+                    const TICKS = 50;
+                    const percent = score / 10;
+                    const activeTicks = Math.round(TICKS * percent);
+                    const ticks = Array.from({ length: TICKS }, (_, i) => i);
+                    return (
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="relative w-40 h-40 flex items-center justify-center">
+                          <svg width="160" height="160" viewBox="0 0 160 160" className="block">
+                            {ticks.map(i => {
+                              const angle = (i / TICKS) * 2 * Math.PI - Math.PI / 2;
+                              const r1 = 72, r2 = 78;
+                              const x1 = 80 + r1 * Math.cos(angle);
+                              const y1 = 80 + r1 * Math.sin(angle);
+                              const x2 = 80 + r2 * Math.cos(angle);
+                              const y2 = 80 + r2 * Math.sin(angle);
+                              return (
+                                <line
+                                  key={i}
+                                  x1={x1}
+                                  y1={y1}
+                                  x2={x2}
+                                  y2={y2}
+                                  stroke={i < activeTicks ? accent : '#e5e7eb'}
+                                  strokeWidth={3}
+                                  strokeLinecap="round"
+                                />
+                              );
+                            })}
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col items-center justify-center">
+                            <span className="text-5xl font-extrabold text-gray-900 dark:text-white tracking-tight">{score}</span>
+                            <span className="mt-1 text-base font-medium text-gray-500 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-1 shadow-sm">{score} / 10</span>
+                          </div>
+                        </div>
+                        <div className="w-full mt-6">
+                          <div className="flex items-center gap-2 mb-2">
+                            <svg width="18" height="18" fill="none" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="#a3a3a3" strokeWidth="2"/><path d="M12 8v4" stroke="#a3a3a3" strokeWidth="2" strokeLinecap="round"/><circle cx="12" cy="16" r="1" fill="#a3a3a3"/></svg>
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Commentaires</span>
+                          </div>
+                          <ul className="space-y-2 w-full bg-white/90 dark:bg-gray-900/80 rounded-xl p-4 shadow border border-gray-100 dark:border-gray-800">
+                            {comments.map((c, i) => (
+                              <li key={i} className="text-sm text-gray-700 dark:text-gray-200 flex items-start gap-2 leading-snug"><span className="mt-0.5">•</span> {c}</li>
+                            ))}
+                          </ul>
+                        </div>
                       </div>
-                      <span className="font-medium">FCFA</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">18 345 FCFA</p>
-                      <p className="text-xs text-green-500">Actif</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center">
-                        🇬🇧
-                      </div>
-                      <span className="font-medium">FCFA</span>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">15 000 FCFA</p>
-                      <p className="text-xs text-gray-500">Inactif</p>
-                    </div>
-                  </div>
+                    );
+                  })()}
                 </div>
               </CardContent>
             </Card>
@@ -822,88 +884,78 @@ export function ModernFinancialDashboard() {
           {/* Right Column */}
           <div className="col-span-3 space-y-6">
             {/* Total Income Chart */}
-            <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
-              <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-2">Revenus totaux</h3>
-                <p className="text-sm text-muted-foreground mb-6">Visualisez vos revenus sur les 6 derniers mois</p>
-
-                {/* Légende Chart.js uniquement */}
-
-                {/* Graphique moderne avec Chart.js */}
-                <div className="space-y-4">
-                  <Bar
-                    data={{
-                      labels: chartData.map(d => d.month),
-                      datasets: [
-                        {
-                          label: 'Revenus',
-                          data: chartData.map(d => d.profit),
-                          backgroundColor: 'rgba(251, 146, 60, 0.8)', // orange-500
-                          borderRadius: 6,
-                          borderSkipped: false,
-                        },
-                        {
-                          label: 'Dépenses',
-                          data: chartData.map(d => d.loss),
-                          backgroundColor: 'rgba(55, 65, 81, 0.7)', // gray-700
-                          borderRadius: 6,
-                          borderSkipped: false,
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      plugins: {
-                        legend: {
-                          display: true,
-                          labels: {
-                            color: '#6b7280',
-                            font: { size: 13, family: 'inherit' },
-                          },
-                        },
-                        title: {
-                          display: false,
-                        },
-                        tooltip: {
-                          callbacks: {
-                            label: function(context) {
-                              let label = context.dataset.label || '';
-                              if (label) label += ': ';
-                              if (context.parsed.y !== null) {
-                                label += context.parsed.y.toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' FCFA';
-                              }
-                              return label;
-                            }
-                          }
-                        }
-                      },
-                      scales: {
-                        x: {
-                          grid: { display: false },
-                          ticks: { color: '#6b7280', font: { size: 12 } },
-                        },
-                        y: {
-                          grid: { color: '#e5e7eb' },
-                          ticks: {
-                            color: '#6b7280',
-                            font: { size: 12 },
-                            callback: function(value) {
-                              return value.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
-                            }
-                          },
-                        },
-                      },
-                      animation: {
-                        duration: 900,
-                        easing: 'easeOutQuart',
-                      },
-                      maintainAspectRatio: false,
-                    }}
-                    height={220}
-                  />
+            <div className="bg-white dark:bg-card rounded-[2rem] shadow-xl p-8 w-full max-w-full border border-gray-100 dark:border-gray-800 transition-all duration-300 hover:scale-[1.01] hover:shadow-2xl">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-2">
+                <div>
+                  <h3 className="text-2xl font-extrabold text-blue-700 dark:text-cyan-300 tracking-tight mb-1">Revenus totaux</h3>
+                  <p className="text-base text-gray-500 dark:text-gray-300">Évolution sur les 6 derniers mois</p>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+              <div className="h-64 w-full flex items-center justify-center">
+                <Line
+                  data={{
+                    labels: chartData.map(d => d.month),
+                    datasets: [
+                      {
+                        label: 'Revenus',
+                        data: chartData.map(d => d.profit),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'transparent',
+                        pointRadius: 3,
+                        pointBackgroundColor: '#2563eb',
+                        borderWidth: 3.5,
+                        tension: 0.5,
+                        fill: false,
+                      },
+                      {
+                        label: 'Dépenses',
+                        data: chartData.map(d => d.loss),
+                        borderColor: '#06b6d4',
+                        backgroundColor: 'transparent',
+                        pointRadius: 3,
+                        pointBackgroundColor: '#06b6d4',
+                        borderWidth: 3.5,
+                        tension: 0.5,
+                        fill: false,
+                      },
+                    ],
+                  }}
+                  options={{
+                    responsive: true,
+                    plugins: {
+                      legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                          color: '#2563eb',
+                          font: { size: 16, weight: 'bold', family: 'inherit' },
+                          boxWidth: 18,
+                          boxHeight: 3,
+                          usePointStyle: false,
+                          padding: 24,
+                        },
+                      },
+                      title: { display: false },
+                      tooltip: { enabled: true },
+                    },
+                    scales: {
+                      x: {
+                        grid: { display: false },
+                        ticks: { color: '#64748b', font: { size: 15, weight: 'bold' }, padding: 8 },
+                      },
+                      y: {
+                        grid: { color: '#e0e7ef' },
+                        ticks: { color: '#64748b', font: { size: 15, weight: 'bold' }, stepSize: 100, padding: 8 },
+                        beginAtZero: true,
+                        min: 0,
+                      },
+                    },
+                    layout: { padding: { top: 20, right: 20, left: 20, bottom: 20 } },
+                    animation: { duration: 1300, easing: 'easeOutQuart' },
+                  }}
+                />
+              </div>
+            </div>
 
             {/* My Cards */}
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
