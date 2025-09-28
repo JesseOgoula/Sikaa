@@ -6,9 +6,22 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, ArrowUpRight, ArrowDownLeft, Bell, User, LogOut } from "lucide-react";
+import { ValidatePotentialIncomeButton } from "@/components/ui/ValidatePotentialIncomeButton";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import React, { useState, useEffect } from "react";
+import { Bar } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+} from 'chart.js';
+
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
 type Transaction = {
   id: string;
@@ -76,6 +89,32 @@ const initialTransactions: Transaction[] = [
 ];
 
 export function ModernFinancialDashboard() {
+  // Filtres avancés pour l'historique
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterType, setFilterType] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterCategory, setFilterCategory] = useState<string>("");
+  // Recherche texte pour l'historique
+  const [search, setSearch] = useState("");
+  // Fonction pour valider un revenu potentiel
+  const handleValidatePotentialIncome = async (transactionId: string) => {
+    // Mettre à jour la transaction dans Supabase
+    const { data, error } = await supabase
+      .from('transactions')
+      .update({ transaction_type: 'income', status: 'completed' })
+      .eq('id', transactionId)
+      .select();
+    if (!error && data && data.length > 0) {
+      // Mettre à jour le state local
+      setTransactions(prev => prev.map(tx =>
+        tx.id === transactionId
+          ? { ...tx, type: 'income', status: 'completed' }
+          : tx
+      ));
+    } else {
+      alert("Erreur lors de la validation du revenu potentiel");
+    }
+  };
   // ...existing code...
   // ...existing code...
   // (après l'initialisation de transactions et avant le return)
@@ -186,7 +225,7 @@ export function ModernFinancialDashboard() {
   const potentialRevenue = transactions.filter(t => t.type === "potential_income" && new Date(t.date).getMonth() === currentMonth && new Date(t.date).getFullYear() === currentYear).reduce((sum, t) => sum + t.amount, 0);
 
   // Génère les données du graphique dynamiquement à partir des transactions (6 derniers mois)
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const months = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août", "Sept", "Oct", "Nov", "Déc"];
   const chartData = Array.from({ length: 6 }).map((_, i) => {
     const d = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1);
     const monthLabel = `${months[d.getMonth()]} ${d.getFullYear().toString().slice(-2)}`;
@@ -204,6 +243,11 @@ export function ModernFinancialDashboard() {
   const handleAddTransaction = () => setShowAddForm(true);
   const handleFormChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  // Handler pour la recherche
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
   };
   const handleNewCategoryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setNewCategory(e.target.value);
@@ -499,45 +543,158 @@ export function ModernFinancialDashboard() {
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold">Activités Récentes</h3>
-                  <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-bold tracking-tight">Activités récentes</h3>
+                  <div className="flex items-center gap-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         placeholder="Rechercher"
-                        className="pl-10 w-48 rounded-xl"
+                        className="pl-10 w-44 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                        value={search}
+                        onChange={handleSearchChange}
                       />
                     </div>
-                    <Button variant="outline" size="sm" className="rounded-xl">
-                      <Filter className="h-4 w-4 mr-2" />
-                      Filtrer
-                    </Button>
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-lg border border-gray-200 dark:border-gray-700 text-xs px-3 py-1"
+                        onClick={() => setShowFilters(v => !v)}
+                        type="button"
+                      >
+                        <Filter className="h-4 w-4 mr-1" />
+                        Filtrer
+                      </Button>
+                      {showFilters && (
+                        <div className="absolute right-0 mt-2 z-20 bg-white dark:bg-gray-900 border border-border rounded-xl shadow-lg p-4 w-64 flex flex-col gap-3 animate-fade-in">
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">Type</label>
+                            <select className="w-full rounded p-1 border" value={filterType} onChange={e => setFilterType(e.target.value)}>
+                              <option value="">Tous</option>
+                              <option value="income">Revenu</option>
+                              <option value="expense">Dépense</option>
+                              <option value="potential_income">Revenu potentiel</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">Statut</label>
+                            <select className="w-full rounded p-1 border" value={filterStatus} onChange={e => setFilterStatus(e.target.value)}>
+                              <option value="">Tous</option>
+                              <option value="completed">Complété</option>
+                              <option value="pending">En attente</option>
+                              <option value="in-progress">En cours</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-semibold mb-1">Catégorie</label>
+                            <select className="w-full rounded p-1 border" value={filterCategory} onChange={e => setFilterCategory(e.target.value)}>
+                              <option value="">Toutes</option>
+                              {categories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex gap-2 mt-2 justify-end">
+                            <Button size="sm" variant="outline" onClick={() => { setFilterType(""); setFilterStatus(""); setFilterCategory(""); }}>Réinitialiser</Button>
+                            <Button size="sm" className="bg-orange-500 text-white" onClick={() => setShowFilters(false)}>OK</Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  {transactions.map((transaction, index) => (
-                    <div key={transaction.id} className="flex items-center justify-between py-3 border-b border-border last:border-0">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-orange-100 dark:bg-orange-900 rounded-full flex items-center justify-center">
-                          <span className="text-orange-600 dark:text-orange-400">{transaction.icon === 'shopping' ? '🛒' : transaction.icon === 'travel' ? '✈️' : transaction.icon === 'mobile' ? '📱' : transaction.icon === 'hotel' ? '🏨' : transaction.icon === 'software' ? '💻' : '💰'}</span>
+                <div className="divide-y divide-gray-200 rounded-xl overflow-hidden bg-white dark:bg-background border border-gray-200 dark:border-gray-800" style={{ maxHeight: 380, overflowY: 'auto' }}>
+                  {transactions.length === 0 && (
+                    <div className="py-8 text-center text-muted-foreground text-sm">Aucune activité récente</div>
+                  )}
+                  {(() => {
+                    const filteredTransactions = transactions.filter(tx => {
+                      const q = search.trim().toLowerCase();
+                      let match = true;
+                      if (q) {
+                        match = (
+                          tx.activity.toLowerCase().includes(q) ||
+                          tx.category.toLowerCase().includes(q) ||
+                          String(tx.amount).includes(q)
+                        );
+                      }
+                      if (filterType && tx.type !== filterType) match = false;
+                      if (filterStatus && tx.status !== filterStatus) match = false;
+                      if (filterCategory && tx.category !== filterCategory) match = false;
+                      return match;
+                    });
+                    if (filteredTransactions.length === 0) {
+                      return <div className="py-8 text-center text-muted-foreground text-sm">Aucune activité récente</div>;
+                    }
+                    // Afficher seulement les 5 dernières transactions (plus récentes en haut)
+                    return filteredTransactions.slice(0, 5).map((transaction, index) => {
+                      // Palette projet : orange-500, bleu-600, gris-700, gris-200, minimalisme
+                      let amountColor = 'text-gray-900';
+                      if (transaction.type === 'income') amountColor = 'text-orange-600 dark:text-orange-400';
+                      if (transaction.type === 'expense') amountColor = 'text-gray-500 dark:text-gray-400';
+                      if (transaction.type === 'potential_income') amountColor = 'text-blue-600 dark:text-blue-300';
+
+                      // Icônes minimalistes (emoji ou SVG unicode simples)
+                      let icon = '●';
+                      if (transaction.type === 'income') icon = '↑';
+                      else if (transaction.type === 'expense') icon = '↓';
+                      else if (transaction.type === 'potential_income') icon = '…';
+
+                      return (
+                        <div
+                          key={transaction.id}
+                          className="group flex items-center justify-between px-3 py-4 bg-white dark:bg-card hover:bg-orange-50 dark:hover:bg-orange-950 transition-colors cursor-pointer border-l-4 border-transparent hover:border-orange-500"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-9 h-9 bg-gray-200 dark:bg-gray-800 rounded-full flex items-center justify-center text-lg font-bold text-orange-500 dark:text-orange-400">
+                              {icon}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-medium truncate max-w-[180px] text-base">{transaction.activity}</p>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-muted-foreground">{new Date(transaction.date).toLocaleString()}</span>
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-normal bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">
+                                  {transaction.category}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 min-w-[120px]">
+                            <span className={`font-semibold text-base ${amountColor}`}>{Number(transaction.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</span>
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {/* Badge statut (Complété / En attente) */}
+                              {(transaction.status === 'completed' || transaction.status === 'pending') && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-normal ${
+                                  transaction.status === 'completed'
+                                    ? 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                    : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-200'
+                                }`}>
+                                  {transaction.status === 'completed' ? 'Complété' : 'En attente'}
+                                </span>
+                              )}
+                              {/* Badge type de transaction */}
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-normal ${
+                                transaction.type === 'income'
+                                  ? 'bg-orange-50 text-orange-600 dark:bg-orange-900 dark:text-orange-200'
+                                  : transaction.type === 'expense'
+                                    ? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                    : 'bg-blue-50 text-blue-600 dark:bg-blue-900 dark:text-blue-200'
+                              }`}>
+                                {transaction.type === 'income'
+                                  ? 'Revenu'
+                                  : transaction.type === 'expense'
+                                    ? 'Dépense'
+                                    : 'Revenu potentiel'}
+                              </span>
+                            </div>
+                            {transaction.type === 'potential_income' && (
+                              <ValidatePotentialIncomeButton onValidate={() => handleValidatePotentialIncome(transaction.id)} />
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{transaction.activity}</p>
-                          <p className="text-sm text-muted-foreground">{new Date(transaction.date).toLocaleString()}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{Number(transaction.amount).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</p>
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          transaction.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                          transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' :
-                          'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-                        }`}>
-                          {transaction.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                      );
+                    });
+                  })()}
                 </div>
               </CardContent>
             </Card>
@@ -548,58 +705,83 @@ export function ModernFinancialDashboard() {
             {/* Total Income Chart */}
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
               <CardContent className="p-6">
-                <h3 className="text-lg font-semibold mb-2">Total Income</h3>
-                <p className="text-sm text-muted-foreground mb-6">Visualisez vos revenus sur une période donnée</p>
-                
-                {/* Legend */}
-                <div className="flex items-center gap-6 mb-6">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                    <span className="text-sm font-medium">Bénéfices</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-foreground"></div>
-                    <span className="text-sm font-medium">Pertes</span>
-                  </div>
-                </div>
+                <h3 className="text-lg font-semibold mb-2">Revenus totaux</h3>
+                <p className="text-sm text-muted-foreground mb-6">Visualisez vos revenus sur les 6 derniers mois</p>
 
-                {/* Chart */}
+                {/* Légende Chart.js uniquement */}
+
+                {/* Graphique moderne avec Chart.js */}
                 <div className="space-y-4">
-                  <div className="flex items-end justify-between h-32 gap-2">
-                    {chartData.map((data, index) => (
-                      <div key={index} className="flex flex-col items-center gap-1 flex-1">
-                        <div className="flex flex-col items-center justify-end h-24 w-full gap-0">
-                          <div 
-                            className="w-full bg-orange-500 rounded-t-sm transition-all duration-300"
-                            style={{ 
-                              height: `${(data.profit / maxValue) * 80}%`,
-                              minHeight: '4px'
-                            }}
-                          />
-                          <div 
-                            className="w-full bg-foreground rounded-b-sm transition-all duration-300"
-                            style={{ 
-                              height: `${(data.loss / maxValue) * 80}%`,
-                              minHeight: '4px'
-                            }}
-                          />
-                        </div>
-                        <span className="text-xs font-medium text-muted-foreground mt-2">
-                          {data.month}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                  
-                  {/* Progress bar */}
-                  <div className="flex justify-between text-xs text-muted-foreground mt-4">
-                    <span>0%</span>
-                    <span>20%</span>
-                    <span>40%</span>
-                    <span>60%</span>
-                    <span>80%</span>
-                    <span>100%</span>
-                  </div>
+                  <Bar
+                    data={{
+                      labels: chartData.map(d => d.month),
+                      datasets: [
+                        {
+                          label: 'Revenus',
+                          data: chartData.map(d => d.profit),
+                          backgroundColor: 'rgba(251, 146, 60, 0.8)', // orange-500
+                          borderRadius: 6,
+                          borderSkipped: false,
+                        },
+                        {
+                          label: 'Dépenses',
+                          data: chartData.map(d => d.loss),
+                          backgroundColor: 'rgba(55, 65, 81, 0.7)', // gray-700
+                          borderRadius: 6,
+                          borderSkipped: false,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: {
+                        legend: {
+                          display: true,
+                          labels: {
+                            color: '#6b7280',
+                            font: { size: 13, family: 'inherit' },
+                          },
+                        },
+                        title: {
+                          display: false,
+                        },
+                        tooltip: {
+                          callbacks: {
+                            label: function(context) {
+                              let label = context.dataset.label || '';
+                              if (label) label += ': ';
+                              if (context.parsed.y !== null) {
+                                label += context.parsed.y.toLocaleString('fr-FR', { maximumFractionDigits: 0 }) + ' FCFA';
+                              }
+                              return label;
+                            }
+                          }
+                        }
+                      },
+                      scales: {
+                        x: {
+                          grid: { display: false },
+                          ticks: { color: '#6b7280', font: { size: 12 } },
+                        },
+                        y: {
+                          grid: { color: '#e5e7eb' },
+                          ticks: {
+                            color: '#6b7280',
+                            font: { size: 12 },
+                            callback: function(value) {
+                              return value.toLocaleString('fr-FR', { maximumFractionDigits: 0 });
+                            }
+                          },
+                        },
+                      },
+                      animation: {
+                        duration: 900,
+                        easing: 'easeOutQuart',
+                      },
+                      maintainAspectRatio: false,
+                    }}
+                    height={220}
+                  />
                 </div>
               </CardContent>
             </Card>
