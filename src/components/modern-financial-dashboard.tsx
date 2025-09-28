@@ -91,6 +91,23 @@ const initialTransactions: Transaction[] = [
 ];
 
 export function ModernFinancialDashboard() {
+  // --- Épargne & Objectifs ---
+  type SavingGoal = {
+    name: string;
+    target: number;
+    saved: number;
+    deadline: string;
+  };
+  const [goals, setGoals] = useState<SavingGoal[]>([]);
+  const [showAddGoal, setShowAddGoal] = useState(false);
+  const [goalForm, setGoalForm] = useState({ name: '', target: 0, saved: 0, deadline: '' });
+
+  function handleAddGoal(e: React.FormEvent) {
+    e.preventDefault();
+    setGoals(g => [...g, { ...goalForm }]);
+    setGoalForm({ name: '', target: 0, saved: 0, deadline: '' });
+    setShowAddGoal(false);
+  }
   // Filtres avancés pour l'historique
   const [showFilters, setShowFilters] = useState(false);
   const [filterType, setFilterType] = useState<string>("");
@@ -421,45 +438,59 @@ export function ModernFinancialDashboard() {
             <Card className="bg-white dark:bg-card border-0 shadow-lg rounded-2xl">
               <CardContent className="p-6">
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-muted-foreground">Solde total</h3>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground">🇫🇷 FCFA</div>
-                  </div>
-                  <div>
-                    <h2 className="text-4xl font-bold text-foreground">{totalIncomeAllTime.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} FCFA</h2>
-                  </div>
-                  <div className="flex gap-3 pt-4">
-                    <Button className="bg-orange-500 hover:bg-orange-600 text-white flex-1 rounded-xl" onClick={handleAddTransaction}>
-                      <ArrowUpRight className="h-4 w-4 mr-2" />
-                      Ajouter
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-lg font-bold text-green-700 dark:text-green-300">Épargne & Objectifs</h3>
+                    <Button size="sm" className="bg-green-500 text-white hover:bg-green-600 rounded-lg px-3 py-1 ml-2" onClick={() => setShowAddGoal(true)}>
+                      + Nouvel objectif
                     </Button>
                   </div>
-                  {showAddForm && (
-                    <form className="mt-4 space-y-3 bg-gray-50 p-4 rounded-xl border" onSubmit={handleFormSubmit}>
-                      <input name="activity" value={form.activity} onChange={handleFormChange} placeholder="Description" className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400" required />
-                      <input name="amount" value={form.amount} onChange={handleFormChange} placeholder="Montant" type="number" min="0" className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400" required />
-                      <select name="type" value={form.type} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white">
-                        <option value="income">Revenu</option>
-                        <option value="expense">Dépense</option>
-                        <option value="potential_income">Revenu potentiel</option>
-                      </select>
-                      <div className="relative">
-                        <select name="category" value={form.category} onChange={handleFormChange} className="w-full rounded p-2 border focus:ring-2 focus:ring-orange-400 bg-white appearance-none pr-10">
-                          {categories.map((cat, idx) => (
-                            <option key={cat + idx} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">▼</span>
+                  {goals.length === 0 ? (
+                    <div className="text-sm text-gray-500 dark:text-gray-300 mt-4">Aucun objectif défini. Cliquez sur "+ Nouvel objectif" pour en ajouter un.</div>
+                  ) : (
+                    <div className="space-y-4 mt-2">
+                      {goals.map((goal, idx) => {
+                        const percent = Math.min(100, Math.round((goal.saved / goal.target) * 100));
+                        return (
+                          <div key={idx} className="bg-white dark:bg-card rounded-xl p-4 shadow flex flex-col gap-2 border border-gray-100 dark:border-gray-800">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <div className="font-semibold text-green-800 dark:text-green-200">{goal.name}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">Objectif : {goal.target.toLocaleString('fr-FR')} FCFA</div>
+                                <div className="text-xs text-gray-400 dark:text-gray-500">Échéance : {goal.deadline}</div>
+                              </div>
+                              <div className="text-right">
+                                <div className="text-xs text-gray-500 dark:text-gray-300">{goal.saved.toLocaleString('fr-FR')} / {goal.target.toLocaleString('fr-FR')} FCFA</div>
+                                <div className="text-xs text-green-700 dark:text-green-300 font-bold">{percent}%</div>
+                              </div>
+                            </div>
+                            <div className="w-full bg-green-100 dark:bg-green-900 rounded-full h-3 mt-2">
+                              <div
+                                className="bg-gradient-to-r from-green-400 to-green-600 h-3 rounded-full transition-all"
+                                style={{ width: `${percent}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {/* Modal ajout objectif */}
+                  {showAddGoal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+                      <div className="bg-white dark:bg-card rounded-2xl p-8 shadow-xl w-full max-w-md">
+                        <h3 className="text-lg font-bold mb-4 text-green-800 dark:text-green-200">Nouvel objectif d'épargne</h3>
+                        <form onSubmit={handleAddGoal} className="space-y-3">
+                          <input className="w-full rounded p-2 border focus:ring-2 focus:ring-green-400" placeholder="Nom de l'objectif" value={goalForm.name} onChange={e => setGoalForm(f => ({ ...f, name: e.target.value }))} required />
+                          <input className="w-full rounded p-2 border focus:ring-2 focus:ring-green-400" placeholder="Montant cible" type="number" min="1" value={goalForm.target} onChange={e => setGoalForm(f => ({ ...f, target: Number(e.target.value) }))} required />
+                          <input className="w-full rounded p-2 border focus:ring-2 focus:ring-green-400" placeholder="Montant épargné" type="number" min="0" value={goalForm.saved} onChange={e => setGoalForm(f => ({ ...f, saved: Number(e.target.value) }))} required />
+                          <input className="w-full rounded p-2 border focus:ring-2 focus:ring-green-400" placeholder="Échéance (ex: 31/12/2025)" value={goalForm.deadline} onChange={e => setGoalForm(f => ({ ...f, deadline: e.target.value }))} required />
+                          <div className="flex gap-2 justify-end">
+                            <Button type="button" variant="outline" onClick={() => setShowAddGoal(false)}>Annuler</Button>
+                            <Button type="submit" className="bg-green-500 text-white">Ajouter</Button>
+                          </div>
+                        </form>
                       </div>
-                      <div className="flex gap-2 items-center">
-                        <input type="text" value={newCategory} onChange={handleNewCategoryChange} placeholder="Nouvelle catégorie" className="flex-1 rounded p-2 border focus:ring-2 focus:ring-orange-400" />
-                        <Button type="button" className="bg-orange-100 text-orange-600 hover:bg-orange-200 px-3 py-1 rounded" onClick={handleAddCategory}>Ajouter</Button>
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button type="button" variant="outline" onClick={() => setShowAddForm(false)}>Annuler</Button>
-                        <Button type="submit" className="bg-orange-500 text-white">Ajouter</Button>
-                      </div>
-                    </form>
+                    </div>
                   )}
                 </div>
               </CardContent>
